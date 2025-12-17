@@ -1,28 +1,47 @@
 # Multimodal AI Architectures Assignment
 
 ## Overview
-This assignment explores and compares three distinct architectural approaches for building Multimodal AI systems capable of processing and generating mixed media. The goal is to understand the structural trade-offs between pipelined systems, adapter-based integration, and unified native models.
+This assignment explores and compares three distinct architectural approaches for building Multimodal AI systems. The goal is to understand the structural trade-offs between pipelined systems, adapter-based integration, and unified native models.
 
-## Implemented Approaches
+## Architectural Comparison
 
-### Path 1: LLM + Tools (Pipeline)
-*   **Architecture:** Chained execution of specialized, independent models (e.g., Whisper for audio, Phi-3 for reasoning, Stable Diffusion for generation).
-*   **Mechanism:** The LLM acts as a central reasoning engine and orchestrator, processing intermediate text representations from perception tools and generating prompts for generation tools.
+| Feature | Approach 1: Pipeline | Approach 2: Adapters | Approach 3: Unified |
+| :--- | :--- | :--- | :--- |
+| **Core Concept** | Chain of specialized tools | Frozen models + Trainable connector | Single native multimodal model |
+| **Modality Bridge** | Text (Transcription/Caption) | Learned Projection Layer (MLP) | Native Token Embeddings |
+| **Training Required** | **None** (Inference only) | **Low** (Train adapter only) | **High** (Full pre-training) |
+| **Data Dependency** | None | High (Requires aligned pairs) | Massive (Pre-training scale) |
+| **Info Loss** | High (Lossy text conversion) | Medium (Embedding alignment) | Low (End-to-end dense features) |
+| **Flexibility** | High (Swap components easily) | Medium (Tied to specific encoders) | Low (Monolithic architecture) |
 
-### Path 2: LLM + Adapters
-*   **Architecture:** A frozen pre-trained LLM augmented with trainable projection layers (adapters) to align separate modalities.
-*   **Mechanism:** Visual or audio encoders map inputs to the LLM's embedding space via a trained projection layer, allowing the LLM to "perceive" non-text modalities without updating its core weights.
+## Implementation Details
 
-### Path 3: Unified Multimodal Model
-*   **Architecture:** A single, end-to-end trained model designed natively to process multiple modalities.
-*   **Mechanism:** The model's architecture inherently supports multimodal tokens, allowing for seamless interleaving of text and image inputs during both training and inference.
+### Path 1: LLM + Tools (Audio Pipeline)
+*   **Input:** Audio
+*   **Perception:** `openai/whisper-base` (Speech-to-Text)
+*   **Reasoning:** `microsoft/Phi-3-mini-4k-instruct` (4-bit quantized)
+*   **Generation:** `runwayml/stable-diffusion-v1-5`
+*   **Mechanism:** Audio is transcribed to text; LLM reasons on text and prompts the image generator.
+
+### Path 2: LLM + Adapters (Visual Projection)
+*   **Input:** Image
+*   **Perception:** `openai/clip-vit-base-patch32` (Frozen Vision Encoder)
+*   **Adapter:** Custom 2-layer MLP (Trainable)
+*   **Reasoning:** `microsoft/Phi-3-mini-4k-instruct` (Frozen LLM)
+*   **Generation:** `runwayml/stable-diffusion-v1-5`
+*   **Mechanism:** Visual features are projected into the LLM's embedding space. Only the adapter is trained to align visual tokens with text tokens.
+
+### Path 3: Unified Multimodal Model (Native)
+*   **Input:** Image
+*   **Unified Model:** `Qwen/Qwen2-VL-2B-Instruct`
+*   **Generation:** `runwayml/stable-diffusion-v1-5` (External tool)
+*   **Mechanism:** A single model natively processes interleaved image and text tokens to generate text responses and image prompts.
 
 ## Key Observations
 
-*   **Implementation Complexity:** Path 1 is the simplest to implement, relying on off-the-shelf APIs. Path 2 requires careful architectural surgery and training loops. Path 3 offers simplicity in usage but high complexity in initial training/fine-tuning.
-*   **Data Requirements:** Path 1 requires no training data. Path 2 is highly sensitive to data quality and volume; small datasets often lead to poor alignment or hallucination. Path 3 typically requires massive pre-training datasets.
-*   **Multimodal Understanding:** Path 3 generally exhibits the deepest semantic understanding of images. Path 1 is limited by the quality of the intermediate caption/transcription. Path 2 struggles with fine-grained details when trained on limited data.
-*   **Limitation:** The adapter-based approach (Path 2) demonstrated significant instability and poor generalization when trained on small, domain-specific datasets, often failing to ground visual features effectively in the language space.
+*   **Pipeline (Path 1):** Most robust and easiest to implement. However, it suffers from "information bottlenecks"—if Whisper mishears a word, the LLM has no way to recover the original audio context.
+*   **Adapters (Path 2):** Theoretically elegant but practically difficult. Training a projection layer on small datasets often leads to poor alignment, where the LLM fails to "ground" the visual embeddings effectively (e.g., hallucinating objects).
+*   **Unified (Path 3):** Best semantic understanding. The model can reason about fine-grained visual details (colors, spatial relations) that are often lost in pipeline captions or poorly aligned adapters.
 
 ## Conclusion
-The choice of architecture dictates the system's flexibility and resource requirements. Pipeline approaches offer modularity and immediate utility without training but suffer from information loss between stages. Adapter-based methods provide a middle ground for customization but are fragile without substantial alignment data. Unified models represent the most robust solution for deep multimodal reasoning, though they demand significant computational resources for training.
+The choice of architecture dictates the system's flexibility and resource requirements. **Pipelines** offer immediate utility and modularity without training. **Adapters** provide a lightweight way to customize models but are fragile without substantial data. **Unified Models** represent the state-of-the-art for deep reasoning but are computationally intensive to train from scratch.
